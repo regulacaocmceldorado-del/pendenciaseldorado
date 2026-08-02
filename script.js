@@ -12,17 +12,16 @@ function gvizCsvUrl(sheetId, gid) {
 // ===================================
 const SHEET_ID = '1_74uHFBFFZOM9klydEEEgCahFI3rVeQDXjZxgGsioTo';
 
-// ⚠️ VERIFIQUE OS GIDS ABAIXO COM OS DA SUA PLANILHA!
 const SHEETS = [
   {
     name: 'PENDÊNCIAS ELDORADO',
-    url: gvizCsvUrl(SHEET_ID, '0'),  // ← CONFIRME ESTE GID
+    url: gvizCsvUrl(SHEET_ID, '0'),
     distrito: 'ELDORADO',
     tipo: 'PENDENTE'
   },
   {
     name: 'RESOLVIDOS ELDORADO',
-    url: gvizCsvUrl(SHEET_ID, '781262891'),  // ← CONFIRME ESTE GID
+    url: gvizCsvUrl(SHEET_ID, '781262891'),
     distrito: 'ELDORADO',
     tipo: 'RESOLVIDO'
   }
@@ -34,6 +33,8 @@ const SHEETS = [
 let allData = [];
 let filteredData = [];
 let currentItemsPerPage = 10;
+
+// paginação estilo "Anterior / Página X de Y / Próximo"
 let currentPage = 1;
 
 let chartPendenciasNaoResolvidasUnidade = null;
@@ -47,17 +48,20 @@ let chartPendenciasMes = null;
 let chartEvolucaoTemporal = null;
 
 // ===================================
-// FUNÇÃO AUXILIAR PARA BUSCAR VALOR DE COLUNA
+// FUNÇÃO AUXILIAR PARA BUSCAR VALOR DE COLUNA (VERSÃO SUPER MELHORADA)
 // ===================================
 function getColumnValue(item, possibleNames, defaultValue = '-') {
+  // Se o item for null ou undefined, retorna defaultValue
   if (!item) return defaultValue;
   
+  // Primeiro, tenta encontrar exatamente como está no objeto
   for (let name of possibleNames) {
     if (item.hasOwnProperty(name) && item[name] !== undefined && item[name] !== null && item[name].toString().trim() !== '') {
       return item[name].toString().trim();
     }
   }
   
+  // Se não encontrar, tenta com case insensitive
   const keys = Object.keys(item);
   
   for (let key of keys) {
@@ -66,6 +70,7 @@ function getColumnValue(item, possibleNames, defaultValue = '-') {
     for (let searchName of possibleNames) {
       const searchLower = searchName.toLowerCase().trim();
       
+      // Verifica correspondência exata ignorando maiúsculas/minúsculas
       if (keyLower === searchLower) {
         const value = item[key];
         if (value !== undefined && value !== null && value.toString().trim() !== '') {
@@ -73,6 +78,7 @@ function getColumnValue(item, possibleNames, defaultValue = '-') {
         }
       }
       
+      // Verifica se uma string contém a outra (para casos como "Nº Solicitação" vs "Solicitação")
       if (keyLower.includes(searchLower) || searchLower.includes(keyLower)) {
         const value = item[key];
         if (value !== undefined && value !== null && value.toString().trim() !== '') {
@@ -82,6 +88,7 @@ function getColumnValue(item, possibleNames, defaultValue = '-') {
     }
   }
   
+  // Tenta encontrar qualquer chave que contenha "solicita" (para o caso específico da solicitação)
   const isSolicitacao = possibleNames.some(name => 
     name.toLowerCase().includes('solicita') || name.toLowerCase().includes('solic') || name.toLowerCase().includes('nº')
   );
@@ -109,6 +116,7 @@ function debugColumns() {
     console.log('Colunas disponíveis:', Object.keys(allData[0]));
     console.log('Valores completos:', allData[0]);
     
+    // Verifica especificamente a coluna de solicitação
     const solicitacaoKeys = Object.keys(allData[0]).filter(key => 
       key.toLowerCase().includes('solicita') || key.toLowerCase().includes('solic') || key.toLowerCase().includes('nº')
     );
@@ -128,6 +136,7 @@ function debugColumns() {
 
 // ===================================
 // REGRA DE PENDÊNCIA: COLUNA "SOLICITAÇÃO" PREENCHIDA
+// (SUBSTITUI A VERIFICAÇÃO DE USUÁRIO)
 // ===================================
 function isPendenciaByUsuario(item) {
   const solicitacao = getColumnValue(item, ['Solicitação', 'SOLICITAÇÃO', 'Solicitacao', 'solicitacao'], '');
@@ -148,7 +157,7 @@ function isOrigemResolvidos(item) {
 }
 
 // ===================================
-// MULTISELECT HELPERS
+// MULTISELECT (CHECKBOX) HELPERS
 // ===================================
 function toggleMultiSelect(id) {
   document.getElementById(id).classList.toggle('open');
@@ -249,18 +258,16 @@ async function loadData() {
     const promises = SHEETS.map(sheet =>
       fetch(sheet.url, { cache: 'no-store' })
         .then(response => {
-          console.log(`Resposta da aba "${sheet.name}": Status ${response.status}`);
           if (!response.ok) {
             throw new Error(`Erro HTTP na aba "${sheet.name}": ${response.status}`);
           }
           return response.text();
         })
         .then(csvText => {
-          console.log(`Aba "${sheet.name}" carregada, tamanho: ${csvText.length} caracteres`);
           csvText = csvText.replace(/^\uFEFF/, '');
 
           if (csvText.includes('<html') || csvText.includes('<!DOCTYPE')) {
-            throw new Error(`Aba "${sheet.name}" retornou HTML (provável falta de permissão ou GID incorreto).`);
+            throw new Error(`Aba "${sheet.name}" retornou HTML (provável falta de permissão).`);
           }
 
           return { name: sheet.name, csv: csvText };
@@ -271,15 +278,10 @@ async function loadData() {
 
     results.forEach(result => {
       const rows = parseCSV(result.csv);
-      console.log(`Aba "${result.name}" tem ${rows.length} linhas`);
 
-      if (rows.length < 2) {
-        console.warn(`Aba "${result.name}" não tem dados suficientes.`);
-        return;
-      }
+      if (rows.length < 2) return;
 
       const headers = rows[0].map(h => (h || '').trim());
-      console.log(`Headers da aba "${result.name}":`, headers);
 
       const sheetData = rows.slice(1)
         .filter(row => row.length > 1 && (row[0] || '').trim() !== '')
@@ -292,14 +294,11 @@ async function loadData() {
           return obj;
         });
 
-      console.log(`Aba "${result.name}" gerou ${sheetData.length} registros`);
       allData.push(...sheetData);
     });
 
-    console.log(`Total de dados carregados: ${allData.length} registros`);
-
     if (allData.length === 0) {
-      throw new Error('Nenhum dado foi carregado das planilhas. Verifique os GIDs e permissões.');
+      throw new Error('Nenhum dado foi carregado das planilhas');
     }
 
     filteredData = [...allData];
@@ -308,6 +307,7 @@ async function loadData() {
     populateFilters();
     updateDashboard();
     
+    // Adiciona debug para verificar as colunas
     debugColumns();
 
   } catch (error) {
@@ -317,8 +317,7 @@ async function loadData() {
       `Verifique:\n` +
       `1. A planilha está com acesso "Qualquer pessoa com o link pode visualizar"? \n` +
       `2. Os GIDs estão corretos (aba certa)?\n` +
-      `3. Há dados nas abas?\n\n` +
-      `Abra o console do navegador (F12) para mais detalhes.`
+      `3. Há dados nas abas?\n`
     );
   } finally {
     showLoading(false);
@@ -326,7 +325,7 @@ async function loadData() {
 }
 
 // ===================================
-// PARSE CSV
+// PARSE CSV (COM SUPORTE A ASPAS)
 // ===================================
 function parseCSV(text) {
   const rows = [];
@@ -380,7 +379,7 @@ function showLoading(show) {
 }
 
 // ===================================
-// POPULAR FILTROS
+//  POPULAR FILTROS
 // ===================================
 function populateFilters() {
   const statusList = [...new Set(allData.map(item => item['Status']))].filter(Boolean).sort();
@@ -404,7 +403,7 @@ function populateFilters() {
 }
 
 // ===================================
-// POPULAR FILTRO DE MÊS
+//  POPULAR FILTRO DE MÊS
 // ===================================
 function populateMonthFilter() {
   const mesesSet = new Set();
@@ -435,7 +434,7 @@ function populateMonthFilter() {
 }
 
 // ===================================
-// APLICAR FILTROS
+//  APLICAR FILTROS
 // ===================================
 function applyFilters() {
   const statusSel = getSelectedFromPanel('msStatusPanel');
@@ -484,7 +483,7 @@ function applyFilters() {
 }
 
 // ===================================
-// LIMPAR FILTROS
+//  LIMPAR FILTROS
 // ===================================
 function clearFilters() {
   ['msStatusPanel', 'msUnidadePanel', 'msEspecialidadePanel', 'msPrestadorPanel', 'msMesPanel'].forEach(panelId => {
@@ -550,24 +549,35 @@ function updateDashboard() {
 }
 
 // ===================================
-// CARDS
+// CARDS (NOVOS)
 // ===================================
 function updateCards() {
   const totalGeral = allData.length;
   const filtrado = filteredData.length;
 
+  // Total pendências a responder (aba pendências + solicitação preenchida)
   const basePendenciasResponder = allData.filter(item => isOrigemPendencias(item) && isPendenciaByUsuario(item));
+
+  // NOVO 1: Registros de Pendências Resolvidas (aba Resolvidos + solicitação preenchida)
   const pendenciasResolvidas = allData.filter(item => isOrigemResolvidos(item) && isPendenciaByUsuario(item));
+
+  // NOVO 2: Registros de Pendências Agendadas (aba Resolvidos + solicitação + Status = "Agendado")
   const pendenciasAgendadas = allData.filter(item => {
     return isOrigemResolvidos(item) && isPendenciaByUsuario(item) && item['Status'] === 'Agendado';
   });
+
+  // NOVO 3: Registros de Pendências Canceladas Por Vencimento do Prazo
+  // (aba Resolvidos + solicitação + Status = "Cancelado/Vencimento do Prazo")
   const pendenciasCanceladasVencimento = allData.filter(item => {
     return isOrigemResolvidos(item) && isPendenciaByUsuario(item) && item['Status'] === 'Cancelado/Vencimento do Prazo';
   });
+
+  // NOVO 4: Registros de Pendências Canceladas/Geral (aba Resolvidos + solicitação + Status = "Cancelado")
   const pendenciasCanceladasGeral = allData.filter(item => {
     return isOrigemResolvidos(item) && isPendenciaByUsuario(item) && item['Status'] === 'Cancelado';
   });
 
+  // Atualizar cards
   const elTotalGeral = document.getElementById('totalRegistrosGeral');
   if (elTotalGeral) elTotalGeral.textContent = totalGeral;
 
@@ -582,14 +592,17 @@ function updateCards() {
 }
 
 // ===================================
-// GRÁFICOS
+//  GRÁFICOS
 // ===================================
 function updateCharts() {
-  // Pendências Não Resolvidas por Unidade
+  // -----------------------------------
+  // Pendências Não Resolvidas por Unidade (aba Pendências + solicitação)
+  // -----------------------------------
   const pendenciasNaoResolvidasUnidade = {};
   filteredData.forEach(item => {
     if (!isOrigemPendencias(item)) return;
     if (!isPendenciaByUsuario(item)) return;
+
     const unidade = item['Unidade Solicitante'] || 'Não informado';
     pendenciasNaoResolvidasUnidade[unidade] = (pendenciasNaoResolvidasUnidade[unidade] || 0) + 1;
   });
@@ -601,11 +614,15 @@ function updateCharts() {
 
   createHorizontalBarChart('chartPendenciasNaoResolvidasUnidade', pendenciasNRLabels, pendenciasNRValues, '#dc2626');
 
-  // Resolvidas por Unidade
+  // -----------------------------------
+  // MUDANÇA 1: Registros de Pendências Resolvidas por Unidade
+  // (aba Resolvidos + solicitação preenchida)
+  // -----------------------------------
   const unidadesResolvidasCount = {};
   filteredData.forEach(item => {
     if (!isOrigemResolvidos(item)) return;
     if (!isPendenciaByUsuario(item)) return;
+    
     const unidade = item['Unidade Solicitante'] || 'Não informado';
     unidadesResolvidasCount[unidade] = (unidadesResolvidasCount[unidade] || 0) + 1;
   });
@@ -617,11 +634,15 @@ function updateCharts() {
 
   createHorizontalBarChart('chartUnidades', unidadesResolvidasLabels, unidadesResolvidasValues, '#48bb78');
 
-  // Resolvidas por Especialidade
+  // -----------------------------------
+  // MUDANÇA 2: Registros de Pendências Resolvidas por Especialidade
+  // (aba Resolvidos + solicitação preenchida)
+  // -----------------------------------
   const especialidadesResolvidasCount = {};
   filteredData.forEach(item => {
     if (!isOrigemResolvidos(item)) return;
     if (!isPendenciaByUsuario(item)) return;
+    
     const especialidade = item['Cbo Especialidade'] || 'Não informado';
     especialidadesResolvidasCount[especialidade] = (especialidadesResolvidasCount[especialidade] || 0) + 1;
   });
@@ -633,11 +654,15 @@ function updateCharts() {
 
   createHorizontalBarChart('chartEspecialidades', especialidadesResolvidasLabels, especialidadesResolvidasValues, '#065f46');
 
-  // Não Resolvidas por Especialidade
+  // -----------------------------------
+  // Pendências Não Resolvidas por Especialidade
+  // (aba Pendências + solicitação preenchida) + cor vermelho escuro
+  // -----------------------------------
   const especialidadesNaoResolvidasCount = {};
   filteredData.forEach(item => {
     if (!isOrigemPendencias(item)) return;
     if (!isPendenciaByUsuario(item)) return;
+
     const especialidade = item['Cbo Especialidade'] || 'Não informado';
     especialidadesNaoResolvidasCount[especialidade] = (especialidadesNaoResolvidasCount[especialidade] || 0) + 1;
   });
@@ -649,7 +674,9 @@ function updateCharts() {
 
   createHorizontalBarChart('chartEspecialidadesNaoResolvidas', espNRLabels, espNRValues, '#7f1d1d');
 
+  // -----------------------------------
   // Status
+  // -----------------------------------
   const statusCount = {};
   filteredData.forEach(item => {
     const status = item['Status'] || 'Não informado';
@@ -660,10 +687,20 @@ function updateCharts() {
   const statusValues = statusLabels.map(label => statusCount[label]);
 
   createVerticalBarChart('chartStatus', statusLabels, statusValues, '#f97316');
+  
+  // -----------------------------------
+  // Pizza (agora ao lado do Mês)
+  // -----------------------------------
   createPieChart('chartPizzaStatus', statusLabels, statusValues);
+  
+  // -----------------------------------
+  // Evolução Temporal (agora embaixo, full width)
+  // -----------------------------------
   createEvolucaoTemporalChart('chartEvolucaoTemporal');
 
+  // -----------------------------------
   // Prestador
+  // -----------------------------------
   const prestadorCount = {};
   filteredData.forEach(item => {
     if (!isPendenciaByUsuario(item)) return;
@@ -678,7 +715,9 @@ function updateCharts() {
 
   createVerticalBarChartCenteredValue('chartPendenciasPrestador', prestLabels, prestValues, '#4c1d95');
 
+  // -----------------------------------
   // Mês
+  // -----------------------------------
   const mesCount = {};
   filteredData.forEach(item => {
     if (!isPendenciaByUsuario(item)) return;
@@ -946,7 +985,7 @@ function createVerticalBarChart(canvasId, labels, data, color) {
 }
 
 // ===================================
-// GRÁFICO DE EVOLUÇÃO TEMPORAL
+// GRÁFICO DE EVOLUÇÃO TEMPORAL (LINHA + ÁREA)
 // ===================================
 function createEvolucaoTemporalChart(canvasId) {
   const ctx = document.getElementById(canvasId);
@@ -1168,7 +1207,8 @@ function createPieChart(canvasId, labels, data) {
 }
 
 // ===================================
-// ATUALIZAR TABELA + PAGINAÇÃO
+// ATUALIZAR TABELA + PAGINAÇÃO (Anterior / Página X de Y / Próximo)
+// ADICIONADA A COLUNA "Nº Solicitação"
 // ===================================
 function getTotalPages() {
   if (currentItemsPerPage === -1) return 1;
@@ -1245,33 +1285,94 @@ function updateTable() {
 
     const origem = item['_origem'] || '-';
 
+    // Busca o número da solicitação com a função melhorada
     const numeroSolicitacao = (() => {
+      // Tenta encontrar o valor da solicitação com a função melhorada
       const valor = getColumnValue(item, [
-        'Solicitação', 'SOLICITAÇÃO', 'Solicitacao', 'solicitacao',
-        'Nº Solicitação', 'Nº da Solicitação', 'Numero Solicitação',
-        'Número da Solicitação', 'N_Solicitacao', 'Solicitação Nº',
-        'Nº Solic', 'Solic', 'Nº Solicitacao', 'Numero Solicitacao'
+        'Solicitação',
+        'SOLICITAÇÃO',
+        'Solicitacao',
+        'solicitacao',
+        'Nº Solicitação',
+        'Nº da Solicitação',
+        'Numero Solicitação',
+        'Número da Solicitação',
+        'N_Solicitacao',
+        'Solicitação Nº',
+        'Nº Solic',
+        'Solic',
+        'Nº Solicitacao',
+        'Numero Solicitacao'
       ], '-');
       
-      if (valor !== '-') return valor;
+      // Se encontrou um valor diferente de '-', retorna ele
+      if (valor !== '-') {
+        return valor;
+      }
       
+      // Se não encontrou, tenta buscar qualquer coluna que contenha "solicita"
       const keys = Object.keys(item);
       for (let key of keys) {
         if (key.toLowerCase().includes('solicita') || key.toLowerCase().includes('solic') || key.toLowerCase().includes('nº')) {
           const val = item[key];
-          if (val && val.toString().trim() !== '') return val.toString().trim();
+          if (val && val.toString().trim() !== '') {
+            return val.toString().trim();
+          }
         }
       }
+      
       return '-';
     })();
 
-    const dataSolicitacao = getColumnValue(item, ['Data da Solicitação', 'Data Solicitação', 'Data da Solicitacao', 'Data Solicitacao']);
-    const prontuario = getColumnValue(item, ['Nº Prontuário', 'N° Prontuário', 'Numero Prontuário', 'Prontuário', 'Prontuario']);
-    const dataInicioStr = getColumnValue(item, ['Data Início da Pendência', 'Data Inicio da Pendencia', 'Data Início Pendência', 'Data Inicio Pendencia']);
-    const prazo15 = getColumnValue(item, ['Data Final do Prazo (Pendência com 15 dias)', 'Data Final do Prazo (Pendencia com 15 dias)', 'Data Final Prazo 15d', 'Prazo 15 dias']);
-    const email15 = getColumnValue(item, ['Data do envio do Email (Prazo: Pendência com 15 dias)', 'Data do envio do Email (Prazo: Pendencia com 15 dias)', 'Data Envio Email 15d', 'Email 15 dias']);
-    const prazo30 = getColumnValue(item, ['Data Final do Prazo (Pendência com 30 dias)', 'Data Final do Prazo (Pendencia com 30 dias)', 'Data Final Prazo 30d', 'Prazo 30 dias']);
-    const email30 = getColumnValue(item, ['Data do envio do Email (Prazo: Pendência com 30 dias)', 'Data do envio do Email (Prazo: Pendencia com 30 dias)', 'Data Envio Email 30d', 'Email 30 dias']);
+    const dataSolicitacao = getColumnValue(item, [
+      'Data da Solicitação',
+      'Data Solicitação',
+      'Data da Solicitacao',
+      'Data Solicitacao'
+    ]);
+
+    const prontuario = getColumnValue(item, [
+      'Nº Prontuário',
+      'N° Prontuário',
+      'Numero Prontuário',
+      'Prontuário',
+      'Prontuario'
+    ]);
+
+    const dataInicioStr = getColumnValue(item, [
+      'Data Início da Pendência',
+      'Data Inicio da Pendencia',
+      'Data Início Pendência',
+      'Data Inicio Pendencia'
+    ]);
+
+    const prazo15 = getColumnValue(item, [
+      'Data Final do Prazo (Pendência com 15 dias)',
+      'Data Final do Prazo (Pendencia com 15 dias)',
+      'Data Final Prazo 15d',
+      'Prazo 15 dias'
+    ]);
+
+    const email15 = getColumnValue(item, [
+      'Data do envio do Email (Prazo: Pendência com 15 dias)',
+      'Data do envio do Email (Prazo: Pendencia com 15 dias)',
+      'Data Envio Email 15d',
+      'Email 15 dias'
+    ]);
+
+    const prazo30 = getColumnValue(item, [
+      'Data Final do Prazo (Pendência com 30 dias)',
+      'Data Final do Prazo (Pendencia com 30 dias)',
+      'Data Final Prazo 30d',
+      'Prazo 30 dias'
+    ]);
+
+    const email30 = getColumnValue(item, [
+      'Data do envio do Email (Prazo: Pendência com 30 dias)',
+      'Data do envio do Email (Prazo: Pendencia com 30 dias)',
+      'Data Envio Email 30d',
+      'Email 30 dias'
+    ]);
 
     row.innerHTML = `
       <td>${origem}</td>
@@ -1288,6 +1389,8 @@ function updateTable() {
       <td>${formatDate(email30)}</td>
     `;
 
+    // DESTAQUE AMARELO:
+    // somente Aba Pendências + Solicitação preenchida + 26 dias desde "Data Início da Pendência"
     const dataInicio = parseDate(dataInicioStr);
     if (dataInicio && isOrigemPendencias(item) && isPendenciaByUsuario(item)) {
       const diasDecorridos = Math.floor((hoje - dataInicio) / (1000 * 60 * 60 * 24));
@@ -1342,14 +1445,14 @@ function formatDate(dateString) {
 }
 
 // ===================================
-// REFRESH
+// DADOS
 // ===================================
 function refreshData() {
   loadData();
 }
 
 // ===================================
-// DOWNLOAD EXCEL
+// DOWNLOAD EXCEL (ATUALIZADO COM Nº SOLICITAÇÃO)
 // ===================================
 function downloadExcel() {
   if (filteredData.length === 0) {
@@ -1359,7 +1462,20 @@ function downloadExcel() {
 
   const exportData = filteredData.map(item => ({
     'Origem': item['_origem'] || '',
-    'Nº Solicitação': getColumnValue(item, ['Solicitação', 'SOLICITAÇÃO', 'Solicitacao', 'solicitacao', 'Nº Solicitação', 'Nº da Solicitação', 'Numero Solicitação', 'Número da Solicitação', 'N_Solicitacao', 'Solicitação Nº', 'Nº Solic', 'Solic'], ''),
+    'Nº Solicitação': getColumnValue(item, [
+      'Solicitação',
+      'SOLICITAÇÃO',
+      'Solicitacao',
+      'solicitacao',
+      'Nº Solicitação',
+      'Nº da Solicitação',
+      'Numero Solicitação',
+      'Número da Solicitação',
+      'N_Solicitacao',
+      'Solicitação Nº',
+      'Nº Solic',
+      'Solic'
+    ], ''),
     'Data Solicitação': getColumnValue(item, ['Data da Solicitação', 'Data Solicitação', 'Data da Solicitacao', 'Data Solicitacao'], ''),
     'Nº Prontuário': getColumnValue(item, ['Nº Prontuário', 'N° Prontuário', 'Numero Prontuário', 'Prontuário', 'Prontuario'], ''),
     'Unidade Solicitante': item['Unidade Solicitante'] || '',
@@ -1378,9 +1494,19 @@ function downloadExcel() {
   XLSX.utils.book_append_sheet(wb, ws, 'Dados Completos');
 
   ws['!cols'] = [
-    { wch: 20 }, { wch: 15 }, { wch: 18 }, { wch: 15 },
-    { wch: 30 }, { wch: 30 }, { wch: 18 }, { wch: 20 },
-    { wch: 25 }, { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 20 }
+    { wch: 20 }, // Origem
+    { wch: 15 }, // Nº Solicitação (NOVA COLUNA)
+    { wch: 18 }, // Data Solicitação
+    { wch: 15 }, // Nº Prontuário
+    { wch: 30 }, // Unidade
+    { wch: 30 }, // Especialidade
+    { wch: 18 }, // Data início
+    { wch: 20 }, // Status
+    { wch: 25 }, // Prestador
+    { wch: 18 }, // Prazo 15
+    { wch: 20 }, // Email 15
+    { wch: 18 }, // Prazo 30
+    { wch: 20 }  // Email 30
   ];
 
   const hoje = new Date().toISOString().split('T')[0];
