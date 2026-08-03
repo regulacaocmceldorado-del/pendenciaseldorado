@@ -1,27 +1,28 @@
 // ===================================
-// FUNÇÃO: URL CSV (Google Sheets gviz) - SEM CACHE BUSTING
+// FUNÇÃO: URL CSV (Google Sheets gviz) + ANTI-CACHE
 // ===================================
 function gvizCsvUrl(sheetId, gid) {
-  return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=${gid}`;
+  const cacheBust = Date.now();
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=${gid}&_=${cacheBust}`;
 }
 
 // ===================================
 // CONFIGURAÇÃO DA PLANILHA (DUAS ABAS)
-// NOVOS LINKS DO DISTRITO VARGEM DAS FLORES
+// NOVOS LINKS DO DISTRITO ELDORADO
 // ===================================
-const SHEET_ID = '1S-i9JgEXm1iRGxatGX8Sw05gaN9qiGGzuW6POSvSsf4';
+const SHEET_ID = '1_74uHFBFFZOM9klydEEEgCahFI3rVeQDXjZxgGsioTo';
 
 const SHEETS = [
   {
-    name: 'PENDÊNCIAS VARGEM DAS FLORES',
-    url: gvizCsvUrl(SHEET_ID, '195857617'),
-    distrito: 'VARGEM DAS FLORES',
+    name: 'PENDÊNCIAS ELDORADO',
+    url: gvizCsvUrl(SHEET_ID, '0'),
+    distrito: 'ELDORADO',
     tipo: 'PENDENTE'
   },
   {
-    name: 'RESOLVIDOS VARGEM DAS FLORES',
-    url: gvizCsvUrl(SHEET_ID, '175440536'),
-    distrito: 'VARGEM DAS FLORES',
+    name: 'RESOLVIDOS ELDORADO',
+    url: gvizCsvUrl(SHEET_ID, '781262891'),
+    distrito: 'ELDORADO',
     tipo: 'RESOLVIDO'
   }
 ];
@@ -1509,5 +1510,5 @@ function downloadExcel() {
   ];
 
   const hoje = new Date().toISOString().split('T')[0];
-  XLSX.writeFile(wb, `Dados_VargemDasFlores_${hoje}.xlsx`);
+  XLSX.writeFile(wb, `Dados_Eldorado_${hoje}.xlsx`);
 }
